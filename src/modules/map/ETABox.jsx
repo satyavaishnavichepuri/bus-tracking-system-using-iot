@@ -4,34 +4,86 @@ function ETABox({ eta, distance, nextStop }) {
 
         <div
             style={{
-                position: "absolute",
-                top: "20px",
-                right: "20px",
-                background: "white",
-                padding: "15px",
-                borderRadius: "12px",
-                boxShadow: "0 2px 10px rgba(0,0,0,0.2)",
-                zIndex: 1000,
-                minWidth: "220px"
+                background: "var(--surface)",
+                border: "1px solid var(--border)",
+                borderRadius: "16px",
+                padding: "18px 20px",
+                color: "var(--text)"
             }}
         >
 
-            <h3>Bus ETA</h3>
+            <div style={{
+                fontSize: 10,
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                color: "var(--muted)",
+                marginBottom: 12
+            }}>
+                🚌 BUS ETA
+            </div>
 
-            <p>
-                Next Stop:
-                <b> {nextStop}</b>
-            </p>
+            <div style={{ marginBottom: 12 }}>
+                <div style={{
+                    fontFamily: "Syne,sans-serif",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    marginBottom: 4
+                }}>
+                    Next Stop: {nextStop}
+                </div>
+            </div>
 
-            <p>
-                ETA:
-                <b> {eta} min</b>
-            </p>
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                    <div style={{
+                        fontFamily: "Syne,sans-serif",
+                        fontSize: 24,
+                        fontWeight: 800,
+                        color: "var(--accent)",
+                        marginBottom: 4
+                    }}>
+                        {eta}
+                        <span style={{
+                            fontSize: 14,
+                            fontWeight: 400,
+                            color: "var(--muted)"
+                        }}> min</span>
+                    </div>
+                    <div style={{
+                        fontSize: 11,
+                        color: "var(--muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 1
+                    }}>
+                        ETA
+                    </div>
+                </div>
 
-            <p>
-                Distance:
-                <b> {distance} km</b>
-            </p>
+                <div style={{ flex: 1 }}>
+                    <div style={{
+                        fontFamily: "Syne,sans-serif",
+                        fontSize: 24,
+                        fontWeight: 800,
+                        color: "var(--gold)",
+                        marginBottom: 4
+                    }}>
+                        {distance}
+                        <span style={{
+                            fontSize: 14,
+                            fontWeight: 400,
+                            color: "var(--muted)"
+                        }}> km</span>
+                    </div>
+                    <div style={{
+                        fontSize: 11,
+                        color: "var(--muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: 1
+                    }}>
+                        Distance
+                    </div>
+                </div>
+            </div>
 
         </div>
     );

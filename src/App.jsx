@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { io } from "socket.io-client";
 import LiveMap from "./modules/map/LiveMap";
+import ETABox from "./modules/map/ETABox";
 import { haversineKm, getBusPositionAtT, getSimulatedBusProgress } from "./modules/map/mapUtils";
 import { ROUTE_COORDINATE_OVERRIDES } from "./data/busRoutes";
 
@@ -1150,8 +1151,21 @@ function MissedBusModal({ bus, sLat, sLng, preferredStopName, onDismiss }) {
 // STUDENT DASHBOARD
 // ══════════════════════════════════════════════════════
 function StudentDashboard({ roll }) {
-  const bus = useMemo(() => getBusFromRoll(roll), [roll]);
-  const backendBusId = useMemo(() => getBackendBusIdForNum(bus.num), [bus.num]);
+  // Auto-select bus for specific roll numbers
+  const getAutoSelectedBusNum = (roll) => {
+    const specialMappings = {
+      "1602-23-733-317": "12",  // B12
+      "1602-23-733-174": "2"    // B2
+    };
+    return specialMappings[roll] || null;
+  };
+
+  const [selectedBusNum, setSelectedBusNum] = useState(getAutoSelectedBusNum(roll));
+  const [stopFilter, setStopFilter] = useState("");
+  
+  const defaultBus = useMemo(() => getBusFromRoll(roll), [roll]);
+  const bus = selectedBusNum ? BUS_DATA.find(b => b.num === selectedBusNum) || defaultBus : defaultBus;
+  const backendBusId = useMemo(() => getBackendBusIdForNum(bus.num), [bus]);
   const forceMehdipatnamStop = roll === "1602-23-733-174";
   const [sLat, setSLat] = useState(null);
   const [sLng, setSLng] = useState(null);
@@ -1160,7 +1174,7 @@ function StudentDashboard({ roll }) {
   const [notifGranted, setNotifGranted] = useState(false);
   const [notifInfo, setNotifInfo] = useState("");
   const [busT, setBusT] = useState(0.05);
-  const [speed, setSpeed] = useState(bus.speed || 28);
+  const [speed, setSpeed] = useState(28);
   const [showAlarm, setShowAlarm] = useState(false);
   const [showMissed, setShowMissed] = useState(false);
   const [alarmDone, setAlarmDone] = useState(false);
@@ -1418,11 +1432,89 @@ function StudentDashboard({ roll }) {
     }
   }, []);
 
-  const statusCol = {online:"var(--green)",delayed:"var(--gold)",offline:"var(--muted)"}[bus.status];
-  const urgentBg = leaveNow ? "rgba(255,68,68,.07)" : leaveSoon ? "rgba(255,201,74,.05)" : "var(--surface)";
-  const urgentBorder = leaveNow ? "rgba(255,68,68,.4)" : leaveSoon ? "rgba(255,201,74,.3)" : "var(--border)";
-  const leaveColor = leaveNow ? "var(--red)" : leaveSoon ? "var(--gold)" : "var(--green)";
+  const statusCol = bus ? {online:"var(--green)",delayed:"var(--gold)",offline:"var(--muted)"}[bus.status] : "var(--muted)";
+  const urgentBg = bus && leaveNow ? "rgba(255,68,68,.07)" : bus && leaveSoon ? "rgba(255,201,74,.05)" : "var(--surface)";
+  const urgentBorder = bus && leaveNow ? "rgba(255,68,68,.4)" : bus && leaveSoon ? "rgba(255,201,74,.3)" : "var(--border)";
+  const leaveColor = bus && leaveNow ? "var(--red)" : bus && leaveSoon ? "var(--gold)" : "var(--green)";
   const TABS = [{k:"home",i:"🏠",l:"Home"},{k:"map",i:"🗺",l:"Map"},{k:"stops",i:"📍",l:"Stops"}];
+
+  // If no bus selected, show bus selection screen
+  if (!selectedBusNum) {
+    const busesWithFilter = stopFilter.trim() 
+      ? BUS_DATA.filter(b => b.stops.some(s => s.name.toLowerCase().includes(stopFilter.toLowerCase())))
+      : BUS_DATA;
+
+    return (
+      <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:32}}>
+        {/* Topbar */}
+        <div style={{position:"sticky",top:0,zIndex:50,background:"rgba(8,12,20,.96)",backdropFilter:"blur(20px)",borderBottom:"1px solid var(--border)",padding:"0 18px",display:"flex",alignItems:"center",justifyContent:"space-between",height:58}}>
+          <div style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:800}}>VCE <span style={{color:"var(--accent)"}}>BusTrack</span></div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5,background:backendConnected?"rgba(0,230,118,.1)":"rgba(255,201,74,.12)",border:backendConnected?"1px solid rgba(0,230,118,.3)":"1px solid rgba(255,201,74,.35)",borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,color:backendConnected?"var(--green)":"var(--gold)",letterSpacing:1}}><span className="live-dot"/> {backendConnected?"LIVE":"SIM"}</div>
+          </div>
+        </div>
+
+        <div style={{padding:"18px"}}>
+          <div style={{marginBottom:20}}>
+            <div style={{fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:800,marginBottom:6}}>Select Your Bus</div>
+            <div style={{fontSize:13,color:"var(--muted)"}}>Choose a bus or search for your boarding stop</div>
+          </div>
+
+          <div style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+            <span style={{color:"var(--muted)"}}>🔍</span>
+            <input 
+              value={stopFilter} 
+              onChange={e=>setStopFilter(e.target.value)} 
+              placeholder="Search by stop name..." 
+              style={{background:"none",border:"none",outline:"none",color:"var(--text)",fontSize:13,width:"100%",fontFamily:"DM Sans,sans-serif"}}
+            />
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+            {busesWithFilter.map(b => (
+              <button
+                key={b.num}
+                onClick={() => setSelectedBusNum(b.num)}
+                style={{
+                  background:"var(--surface)",
+                  border:"1px solid var(--border)",
+                  borderRadius:14,
+                  padding:"14px",
+                  cursor:"pointer",
+                  transition:"all .2s",
+                  textAlign:"center",
+                  color:"var(--text)"
+                }}
+              >
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:28,fontWeight:800,color:"var(--accent)",marginBottom:6}}>B{b.num}</div>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:12,fontWeight:700,marginBottom:4}}>{b.name}</div>
+                <div style={{fontSize:10,color:"var(--muted)",marginBottom:8,lineHeight:1.4}}>{b.stops.length} stops</div>
+                <div style={{fontSize:10,color:"var(--gold)",marginBottom:8}}>₹{b.tariff?.toLocaleString()}/yr</div>
+                <div style={{fontSize:9,color:"var(--muted)",marginBottom:8,lineHeight:1.3}}>{b.route}</div>
+                <div style={{
+                  display:"inline-block",
+                  padding:"4px 10px",
+                  borderRadius:8,
+                  fontSize:9,
+                  fontWeight:700,
+                  color:{online:"var(--green)",delayed:"var(--gold)",offline:"var(--muted)"}[b.status],
+                  background:`{online:"rgba(0,230,118,.1)",delayed:"rgba(255,201,74,.1)",offline:"rgba(107,122,150,.1)"}[b.status]`,
+                  border:`1px solid {online:"rgba(0,230,118,.3)",delayed:"rgba(255,201,74,.3)",offline:"rgba(107,122,150,.3)"}[b.status]`
+                }}>{b.status}</div>
+              </button>
+            ))}
+          </div>
+
+          {busesWithFilter.length === 0 && stopFilter && (
+            <div style={{textAlign:"center",paddingTop:40,color:"var(--muted)"}}>
+              <div style={{fontSize:14,marginBottom:10}}>No buses found for "{stopFilter}"</div>
+              <button onClick={() => setStopFilter("")} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,padding:"8px 16px",color:"var(--accent)",cursor:"pointer",fontFamily:"DM Sans,sans-serif",fontSize:12}}>Clear search</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",paddingBottom:76}}>
@@ -1437,35 +1529,39 @@ function StudentDashboard({ roll }) {
       <div style={{padding:tab === "map" ? 0 : "18px 18px 0"}}>
         {/* HOME TAB */}
         {tab === "home" && (
-          <div style={{display:"flex",flexDirection:"column",gap:14,animation:"fadeIn .3s ease"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:16,animation:"fadeIn .3s ease"}}>
             {/* Bus chip */}
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:"18px 20px",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,var(--accent2),var(--accent))"}}/>
-              <div style={{fontSize:12,color:"var(--muted)",marginBottom:6}}>👤 {roll}</div>
-              <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <div style={{background:"linear-gradient(135deg,var(--accent2),var(--accent))",borderRadius:10,padding:"6px 14px",fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:800}}>B{bus.num}</div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:"20px",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,var(--accent2),var(--accent))"}}/>
+              <div style={{fontSize:12,color:"var(--muted)",marginBottom:8}}>👤 {roll}</div>
+              <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:12}}>
+                <div style={{background:"linear-gradient(135deg,var(--accent2),var(--accent))",borderRadius:12,padding:"8px 16px",fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:800,flexShrink:0}}>B{bus.num}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:"Syne,sans-serif",fontSize:15,fontWeight:700}}>{bus.name}</div>
-                  <div style={{fontSize:11,color:"var(--muted)",marginTop:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bus.route}</div>
+                  <div style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:700,marginBottom:2}}>{bus.name}</div>
+                  <div style={{fontSize:12,color:"var(--muted)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{bus.route}</div>
                 </div>
-                <span style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,fontSize:11,color:statusCol,background:`${statusCol}18`,border:`1px solid ${statusCol}35`,borderRadius:20,padding:"3px 10px",fontWeight:700}}>
-                  <span style={{width:5,height:5,borderRadius:"50%",background:statusCol,display:"inline-block",animation:bus.status==="online"?"pulse 1.5s infinite":undefined}}/>{bus.status}
+                <span style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,fontSize:12,color:statusCol,background:`${statusCol}18`,border:`1px solid ${statusCol}35`,borderRadius:20,padding:"4px 12px",fontWeight:700}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:statusCol,display:"inline-block",animation:bus.status==="online"?"pulse 1.5s infinite":undefined}}/>
+                  {bus.status}
                 </span>
               </div>
-              <div style={{marginTop:10,fontSize:11,color:"var(--muted)"}}>
-                🎫 ₹{bus.tariff?.toLocaleString()}/yr · {bus.stops.length} stops · 🧑‍✈️ {bus.driver}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                <div style={{fontSize:12,color:"var(--muted)",flex:1}}>
+                  🎫 ₹{bus.tariff?.toLocaleString()}/yr · {bus.stops.length} stops · 🧑‍✈️ {bus.driver}
+                </div>
+                <button onClick={() => setSelectedBusNum(null)} style={{flexShrink:0,padding:"6px 14px",background:"rgba(123,97,255,.1)",border:"1px solid rgba(123,97,255,.3)",borderRadius:10,color:"var(--accent2)",cursor:"pointer",fontFamily:"DM Sans,sans-serif",fontSize:12,fontWeight:700}}>Change</button>
               </div>
             </div>
 
             {!locGranted && (
-              <div style={{background:"rgba(123,97,255,.08)",border:"1px solid rgba(123,97,255,.25)",borderRadius:16,padding:"18px 20px"}}>
-                <div style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:700,marginBottom:6}}>📍 Enable Your Location</div>
-                <div style={{fontSize:13,color:"var(--muted)",marginBottom:14,lineHeight:1.6}}>Required to calculate walk time, detect if you miss your bus, and trigger the leave alarm at the right moment.</div>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                  <button onClick={requestLoc} style={{padding:"11px 20px",background:"linear-gradient(135deg,var(--accent2),var(--accent))",border:"none",borderRadius:10,color:"#fff",fontFamily:"Syne,sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Share Location →</button>
-                  <button onClick={requestNotif} style={{padding:"11px 16px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,color:"var(--muted)",fontFamily:"DM Sans,sans-serif",fontSize:13,cursor:"pointer"}}>🔔 Enable Alerts</button>
+              <div style={{background:"rgba(123,97,255,.08)",border:"1px solid rgba(123,97,255,.25)",borderRadius:16,padding:"20px"}}>
+                <div style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:700,marginBottom:8}}>📍 Enable Your Location</div>
+                <div style={{fontSize:13,color:"var(--muted)",marginBottom:16,lineHeight:1.5}}>Required to calculate walk time, detect if you miss your bus, and trigger the leave alarm at the right moment.</div>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center"}}>
+                  <button onClick={requestLoc} style={{padding:"12px 20px",background:"linear-gradient(135deg,var(--accent2),var(--accent))",border:"none",borderRadius:10,color:"#fff",fontFamily:"Syne,sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Share Location →</button>
+                  <button onClick={requestNotif} style={{padding:"12px 16px",background:"var(--card)",border:"1px solid var(--border)",borderRadius:10,color:"var(--muted)",fontFamily:"DM Sans,sans-serif",fontSize:13,cursor:"pointer"}}>🔔 Enable Alerts</button>
                 </div>
-                {notifInfo && <div style={{marginTop:10,fontSize:12,color:"var(--muted)"}}>{notifInfo}</div>}
+                {notifInfo && <div style={{marginTop:12,fontSize:12,color:"var(--muted)"}}>{notifInfo}</div>}
               </div>
             )}
 
@@ -1476,9 +1572,9 @@ function StudentDashboard({ roll }) {
             )}
 
             {locGranted && !notifGranted && (
-              <div style={{background:"rgba(0,229,255,.05)",border:"1px solid rgba(0,229,255,.18)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                <div style={{fontSize:12,color:"var(--muted)"}}>🔔 Enable notifications to receive the alarm when app is in background</div>
-                <button onClick={requestNotif} style={{flexShrink:0,padding:"7px 13px",background:"rgba(0,229,255,.1)",border:"1px solid rgba(0,229,255,.3)",borderRadius:9,color:"var(--accent)",fontFamily:"Syne,sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>Enable</button>
+              <div style={{background:"rgba(0,229,255,.05)",border:"1px solid rgba(0,229,255,.18)",borderRadius:14,padding:"16px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:14}}>
+                <div style={{fontSize:13,color:"var(--muted)",flex:1}}>🔔 Enable notifications to receive the alarm when app is in background</div>
+                <button onClick={requestNotif} style={{flexShrink:0,padding:"10px 16px",background:"rgba(0,229,255,.1)",border:"1px solid rgba(0,229,255,.3)",borderRadius:10,color:"var(--accent)",fontFamily:"Syne,sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>Enable</button>
               </div>
             )}
 
@@ -1488,53 +1584,59 @@ function StudentDashboard({ roll }) {
 
             {locGranted && (
               <>
-                <div style={{background:urgentBg,border:`1px solid ${urgentBorder}`,borderRadius:20,padding:"22px 20px",transition:"all .4s"}}>
-                  <div style={{textAlign:"center",marginBottom:18}}>
-                    <div style={{fontSize:10,letterSpacing:"2px",textTransform:"uppercase",color:"var(--muted)",marginBottom:4}}>
+                <div style={{background:urgentBg,border:`1px solid ${urgentBorder}`,borderRadius:20,padding:"24px 20px",transition:"all .4s"}}>
+                  <div style={{textAlign:"center",marginBottom:20}}>
+                    <div style={{fontSize:11,letterSpacing:"2px",textTransform:"uppercase",color:"var(--muted)",marginBottom:6}}>
                       {leaveNow ? "⚡ LEAVE IMMEDIATELY" : leaveSoon ? "⚠️ LEAVING SOON" : "⏱ JOURNEY TIMELINE"}
                     </div>
-                    {leaveNow && <div style={{fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:800,color:"var(--red)",animation:"countdownBlink 1s infinite"}}>Head to {myStop.name} NOW!</div>}
+                    {leaveNow && <div style={{fontFamily:"Syne,sans-serif",fontSize:20,fontWeight:800,color:"var(--red)",animation:"countdownBlink 1s infinite"}}>Head to {myStop.name} NOW!</div>}
                   </div>
-                  <div style={{display:"flex",justifyContent:"center",gap:24,flexWrap:"wrap"}}>
+                  <div style={{display:"flex",justifyContent:"center",gap:20,flexWrap:"wrap"}}>
                     <CountdownRing minutes={leaveIn} label="Leave In" color={leaveColor} max={30}/>
                     <CountdownRing minutes={busEta} label="Bus Arrives" color="var(--accent)" max={40}/>
                     <CountdownRing minutes={walkTime} label="Walk Time" color="var(--accent2)" max={20}/>
                   </div>
                 </div>
 
-                <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"16px 18px"}}>
-                  <div style={{fontSize:10,letterSpacing:"2px",textTransform:"uppercase",color:"var(--muted)",marginBottom:10}}>📍 Your Boarding Stop</div>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
-                    <div>
-                      <div style={{fontFamily:"Syne,sans-serif",fontSize:17,fontWeight:700}}>{myStop.name}</div>
-                      <div style={{fontSize:12,color:"var(--muted)",marginTop:3}}>Scheduled {myStop.time} · {(distToStop*1000).toFixed(0)}m from you</div>
+                <ETABox
+                  eta={busEta}
+                  distance={busDistToMyStop.toFixed(1)}
+                  nextStop={myStop.name}
+                />
+
+                <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
+                  <div style={{fontSize:10,letterSpacing:"2px",textTransform:"uppercase",color:"var(--muted)",marginBottom:12}}>📍 Your Boarding Stop</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:"Syne,sans-serif",fontSize:18,fontWeight:700,marginBottom:4}}>{myStop.name}</div>
+                      <div style={{fontSize:13,color:"var(--muted)"}}>Scheduled {myStop.time} · {(distToStop*1000).toFixed(0)}m from you</div>
                     </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontFamily:"Syne,sans-serif",fontSize:30,fontWeight:800,color:"var(--accent)"}}>{busEta}<span style={{fontSize:13,fontWeight:400,color:"var(--muted)"}}> min</span></div>
-                      <div style={{fontSize:10,color:"var(--muted)",textTransform:"uppercase",letterSpacing:1}}>Bus ETA</div>
+                    <div style={{textAlign:"center",flexShrink:0}}>
+                      <div style={{fontFamily:"Syne,sans-serif",fontSize:28,fontWeight:800,color:"var(--accent)",marginBottom:2}}>{busEta}<span style={{fontSize:14,fontWeight:400,color:"var(--muted)"}}> min</span></div>
+                      <div style={{fontSize:11,color:"var(--muted)",textTransform:"uppercase",letterSpacing:1}}>Bus ETA</div>
                     </div>
                   </div>
                 </div>
 
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
                   {[
                     {i:"🏎",l:"Speed",v:`${effectiveSpeed} km/h`,c:"var(--accent)"},
                     {i:"👥",l:"Capacity",v:`${bus.capacity}%`,c:"var(--gold)"},
                     {i:"🧑‍✈️",l:"Driver",v:bus.driver,c:"var(--green)"},
                     {i:"📏",l:"Bus Away",v:`${busDistToMyStop.toFixed(1)} km`,c:"var(--accent2)"},
                   ].map(({i,l,v,c},idx)=>(
-                    <div key={idx} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:14,padding:"13px 15px"}}>
-                      <div style={{fontSize:10,color:"var(--muted)",marginBottom:4}}>{i} {l}</div>
-                      <div style={{fontFamily:"Syne,sans-serif",fontSize:15,fontWeight:700,color:c,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v}</div>
+                    <div key={idx} style={{background:"var(--card)",border:"1px solid var(--border)",borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"70px"}}>
+                      <div style={{fontSize:11,color:"var(--muted)",marginBottom:6,textAlign:"center"}}>{i} {l}</div>
+                      <div style={{fontFamily:"Syne,sans-serif",fontSize:16,fontWeight:700,color:c,textAlign:"center",wordBreak:"break-word",lineHeight:1.2}}>{v}</div>
                     </div>
                   ))}
                 </div>
 
-                <div style={{display:"flex",gap:10}}>
-                  <button onClick={()=>{alarmFired.current=false;setAlarmDone(false);setShowAlarm(true);playAlarm();}} style={{flex:1,padding:"10px",background:"rgba(255,68,68,.07)",border:"1px solid rgba(255,68,68,.2)",borderRadius:11,color:"var(--red)",fontFamily:"DM Sans,sans-serif",fontSize:12,cursor:"pointer",fontWeight:500}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <button onClick={()=>{alarmFired.current=false;setAlarmDone(false);setShowAlarm(true);playAlarm();}} style={{padding:"12px 16px",background:"rgba(255,68,68,.07)",border:"1px solid rgba(255,68,68,.2)",borderRadius:12,color:"var(--red)",fontFamily:"DM Sans,sans-serif",fontSize:13,cursor:"pointer",fontWeight:600,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                     🧪 Test Alarm
                   </button>
-                  <button onClick={()=>{missedFired.current=false;setShowMissed(true);}} style={{flex:1,padding:"10px",background:"rgba(255,201,74,.07)",border:"1px solid rgba(255,201,74,.2)",borderRadius:11,color:"var(--gold)",fontFamily:"DM Sans,sans-serif",fontSize:12,cursor:"pointer",fontWeight:500}}>
+                  <button onClick={()=>{missedFired.current=false;setShowMissed(true);}} style={{padding:"12px 16px",background:"rgba(255,201,74,.07)",border:"1px solid rgba(255,201,74,.2)",borderRadius:12,color:"var(--gold)",fontFamily:"DM Sans,sans-serif",fontSize:13,cursor:"pointer",fontWeight:600,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                     🧪 Missed Bus
                   </button>
                 </div>
